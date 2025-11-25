@@ -1,1 +1,101 @@
+import pandas as pd
 
+#load and preview data
+
+results = pd.read_csv('results.csv')
+goalscorers = pd.read_csv('goalscorers.csv')
+shootouts = pd.read_csv('shootouts.csv')
+
+print(results.head())
+print(goalscorers.head())
+print(shootouts.head())
+
+1. 
+#average number of goals per game between 1900 and 2000
+
+#goals per match
+results['total_goals'] = results['home_score'] + results['away_score']
+
+#games between 1900 and 2000
+results['year'] = results['date'].str[:4].astype(int)
+matches_1900_2000 = results[(results['year'] >= 1900) & (results['year'] <= 2000)]
+
+#average goals per match
+avg_goals = matches_1900_2000['total_goals'].mean()
+print(f"Average goals per match between 1900-2000: {avg_goals}")
+
+2.
+#number of shootouts wins by country arranged in alphabetical order
+
+shootout_wins = shootouts.groupby('winner').size().reset_index(name='wins').sort_values('winner')
+
+shootout_wins
+
+3.
+# date column into datetime format
+results['date'] = pd.to_datetime(results['date'])
+goalscorers['date'] = pd.to_datetime(goalscorers['date'])
+shootouts['date'] = pd.to_datetime(shootouts['date'])
+
+# composite key; using date, home team, away team
+
+results['key'] = results['date'].dt.strftime('%Y-%m-%d') + "_" + results['home_team'] + "_" + results['away_team']
+goalscorers['key'] = goalscorers['date'].dt.strftime('%Y-%m-%d') + "_" + goalscorers['home_team'] + "_" + goalscorers['away_team']
+shootouts['key'] = shootouts['date'].dt.strftime('%Y-%m-%d') + "_" + shootouts['home_team'] + "_" + shootouts['away_team']
+
+4.
+# which teams won shootout after 1-1 draw
+
+# since scores and shootout outcomes are stored in separtae files, first we merge
+merged = results.merge(shootouts, on='key', how='inner')
+# filter for 1-1 draws
+one_on_one_draws = merged[(merged['home_score'] == 1) & (merged['away_score'] == 1)]
+# winning teams
+winners_after_draw = one_on_one_draws[['winner']].drop_duplicates().reset_index(drop=True)
+
+winners_after_draw
+
+5.
+# top goal scorer in tournament and what percent of goals are theirs
+
+# the tournament data and score data is stored in results and goalscorers so we merge them
+goal_tournament_merged = goalscorers.merge(results[['key','tournament', 'home_score', 'away_score']], on='key', how='left')
+
+# goals per player per tournament
+player_totals = (goal_tournament_merged.groupby(['tournament', 'scorer']).size().reset_index(name='goals_scored'))
+
+# total goals per tournament
+tournament_totals = (goal_tournament_merged.groupby('tournament').size().reset_index(name='total_goals'))
+
+# merged for percent
+merged = player_totals.merge(tournament_totals, on='tournament')
+merged['percentage'] = (merged['goals_scored'] / merged['total_goals']) * 100
+
+# top scorer per tournament
+top_scorers = merged.sort_values(['tournament', 'goals_scored'], ascending=[True, False]).groupby('tournament').head(1).reset_index(drop=True)
+
+top_scorers[['tournament', 'scorer', 'goals_scored', 'percentage']]
+
+6.
+# data quality issues removed from results  
+results['data_quality_flag'] = (results['home_team'].isna() | results['away_team'].isna() | results['tournament'].isna() | results['date'].isna() | results['home_score'].isna() | results['away_score'].isna() | (results['home_score'] < 0) | (results['away_score'] < 0))
+results_clean = results[~results['data_quality_flag']].copy()
+
+
+# data quality issues removed from goalscorers
+goalscorers['data_quality_flag'] = (goalscorers['team'].isna() | goalscorers['scorer'].isna() | goalscorers['date'].isna() | (goalscorers['minute'] < 0) | (goalscorers['minute'] > 120))
+goalscorers_clean = goalscorers[~goalscorers['data_quality_flag']].copy()
+
+# data quality issues removed from shootouts
+shootouts['data_quality_flag'] = (shootouts['winner'].isna() | shootouts['home_team'].isna() | shootouts['away_team'].isna() | shootouts['date'].isna())
+shootouts_clean =  shootouts[~shootouts['data_quality_flag']].copy()
+
+# quality of each dataset before cleaning
+display(results['data_quality_flag'].value_counts()) # type: ignore
+display(goalscorers['data_quality_flag'].value_counts()) # type: ignore
+display(shootouts['data_quality_flag'].value_counts()) # type: ignore
+
+# quality of each dataset after cleaning
+display(results_clean['data_quality_flag'].value_counts()) # type: ignore
+display(goalscorers_clean['data_quality_flag'].value_counts()) # type: ignore
+display(shootouts_clean['data_quality_flag'].value_counts()) # type: ignore
